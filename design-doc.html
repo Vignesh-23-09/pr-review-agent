@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design Doc — PR Review Agent</title>
+<style>
+  :root {
+    --ink: #1a2233;
+    --muted: #5b6472;
+    --accent: #2563eb;
+    --accent-soft: #eff4ff;
+    --border: #d9dee7;
+    --bg: #ffffff;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+    --ok: #15803d;
+    --warn: #b45309;
+    --bad: #b91c1c;
+    --info: #0369a1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  .page { max-width: 900px; margin: 0 auto; padding: 48px 32px 96px; }
+  header.doc-header { border-bottom: 3px solid var(--accent); padding-bottom: 24px; margin-bottom: 40px; }
+  h1 { font-size: 2rem; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .meta { color: var(--muted); font-size: 0.9rem; }
+  .meta span { margin-right: 18px; }
+  h2 {
+    font-size: 1.35rem;
+    margin-top: 56px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h2 .secnum { color: var(--accent); margin-right: 8px; }
+  h3 { font-size: 1.05rem; margin-top: 32px; }
+  p { margin: 12px 0; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 6px 0; }
+  code {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.86em;
+    background: var(--accent-soft);
+    color: #1e40af;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 16px 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+  pre .k { color: #7dd3fc; }      /* keys / keywords */
+  pre .s { color: #86efac; }      /* strings */
+  pre .n { color: #fca5a5; }      /* numbers / literals */
+  pre .c { color: #94a3b8; font-style: italic; } /* comments */
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.9rem; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f4f6fa; font-weight: 600; }
+  .toc {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 28px;
+    margin: 28px 0;
+  }
+  .toc h2 { margin: 0 0 10px; border: none; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .toc ol { margin: 0; columns: 2; column-gap: 40px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 18px;
+    border-radius: 0 6px 6px 0;
+    margin: 18px 0;
+    font-size: 0.93rem;
+  }
+  .callout.warn { border-color: var(--warn); background: #fff7ed; }
+  .pill {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pill.get  { background: #dcfce7; color: var(--ok); }
+  .pill.post { background: #dbeafe; color: #1d4ed8; }
+  .pill.sev-blocker  { background: #fee2e2; color: var(--bad); }
+  .pill.sev-major    { background: #ffedd5; color: var(--warn); }
+  .pill.sev-minor    { background: #fef9c3; color: #854d0e; }
+  .pill.sev-info     { background: #e0f2fe; color: var(--info); }
+  .cols { display: flex; gap: 24px; flex-wrap: wrap; }
+  .cols > div { flex: 1 1 280px; }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    background: #fcfdff;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 0.95rem; }
+  figure { margin: 24px 0; }
+  figcaption { text-align: center; font-size: 0.82rem; color: var(--muted); margin-top: 8px; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  @media print {
+    .page { padding: 0; max-width: 100%; }
+    pre { white-space: pre-wrap; }
+    h2 { page-break-after: avoid; }
+    figure, table, pre { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+  <h1>PR Review Agent — Design Document</h1>
+  <div class="meta">
+    <span><strong>Status:</strong> Draft v1</span>
+    <span><strong>Author:</strong> Subash V</span>
+    <span><strong>Date:</strong> 2 July 2026</span>
+    <span><strong>Scope:</strong> Public GitHub PRs · Web service + API · Gemini-powered</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">Overview &amp; Goals</a></li>
+    <li><a href="#architecture">High-Level Architecture</a></li>
+    <li><a href="#api">API Design</a></li>
+    <li><a href="#components">Component Design</a></li>
+    <li><a href="#data-model">Data Model</a></li>
+    <li><a href="#sequence">Request Lifecycle</a></li>
+    <li><a href="#nfr">Non-Functional Concerns</a></li>
+    <li><a href="#stack">Tech Stack</a></li>
+    <li><a href="#future">Future Work</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="overview"><span class="secnum">1.</span>Overview &amp; Goals</h2>
+
+<p>
+The <strong>PR Review Agent</strong> is a hosted web service that performs automated code review of
+<strong>public GitHub pull requests</strong>. A client submits a PR URL over HTTP; the service fetches the
+diff and surrounding file context via the GitHub REST API, sends it through a Gemini-powered review
+pipeline, and returns a structured review: an overall verdict, a summary, and per-file findings with
+severity, category, and suggested fixes.
+</p>
+
+<div class="cols">
+  <div>
+    <h3>Goals</h3>
+    <ul>
+      <li>Accept any <strong>public</strong> GitHub PR URL and return a useful, structured review.</li>
+      <li>Review quality beyond diff-only: include the <strong>full file content at head SHA</strong> for changed files so the model sees surrounding context.</li>
+      <li>Simple, stable <strong>HTTP API</strong> that other tools (dashboards, bots, scripts) can integrate with.</li>
+      <li>Handle large PRs gracefully via chunked per-file review passes and explicit token budgets.</li>
+      <li>Operate within free/low-tier GitHub and Gemini rate limits; degrade predictably when limits are hit.</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Non-Goals (v1)</h3>
+    <ul>
+      <li>Private repositories or GitHub OAuth flows.</li>
+      <li>GitLab / Bitbucket support.</li>
+      <li>Posting review comments <em>back</em> to the PR on GitHub.</li>
+      <li>CI/webhook-triggered automatic reviews.</li>
+      <li>Cloning repositories or running the code/tests.</li>
+    </ul>
+    <p class="meta">All of these are candidates for <a href="#future">Future Work (§9)</a>.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="architecture"><span class="secnum">2.</span>High-Level Architecture</h2>
+
+<p>
+The service is a single deployable (FastAPI app) with five logical components. Reviews are
+<strong>asynchronous jobs</strong>: a submission immediately returns a job ID, and the client polls for the
+result. This avoids long-held HTTP connections, since reviewing a mid-sized PR takes 20–90&nbsp;seconds.
+</p>
+
+<figure>
+<svg viewBox="0 0 860 360" width="100%" role="img" aria-label="Architecture diagram">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5b6472"/>
+    </marker>
+  </defs>
+  <!-- Client -->
+  <rect x="20" y="130" width="120" height="60" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="80" y="156" text-anchor="middle" font-size="14" font-weight="600" fill="#1a2233">Client</text>
+  <text x="80" y="174" text-anchor="middle" font-size="11" fill="#5b6472">dashboard / script</text>
+
+  <!-- Service boundary -->
+  <rect x="180" y="20" width="500" height="320" rx="12" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="196" y="44" font-size="12" font-weight="700" fill="#2563eb">PR REVIEW SERVICE (FastAPI)</text>
+
+  <!-- API layer -->
+  <rect x="210" y="130" width="130" height="60" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="275" y="156" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">API Layer</text>
+  <text x="275" y="174" text-anchor="middle" font-size="11" fill="#5b6472">routes + validation</text>
+
+  <!-- Job store -->
+  <rect x="210" y="250" width="130" height="60" rx="8" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+  <text x="275" y="276" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">Job Store</text>
+  <text x="275" y="294" text-anchor="middle" font-size="11" fill="#5b6472">in-memory / Redis</text>
+
+  <!-- PR Fetcher -->
+  <rect x="390" y="60" width="130" height="60" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+  <text x="455" y="86" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">PR Fetcher</text>
+  <text x="455" y="104" text-anchor="middle" font-size="11" fill="#5b6472">GitHub REST client</text>
+
+  <!-- Context Builder -->
+  <rect x="390" y="150" width="130" height="60" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+  <text x="455" y="176" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">Context Builder</text>
+  <text x="455" y="194" text-anchor="middle" font-size="11" fill="#5b6472">chunking + budget</text>
+
+  <!-- Review Engine -->
+  <rect x="390" y="240" width="130" height="60" rx="8" fill="#fae8ff" stroke="#a21caf" stroke-width="1.5"/>
+  <text x="455" y="266" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">Review Engine</text>
+  <text x="455" y="284" text-anchor="middle" font-size="11" fill="#5b6472">Gemini prompts</text>
+
+  <!-- Formatter -->
+  <rect x="550" y="150" width="110" height="60" rx="8" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.5"/>
+  <text x="605" y="176" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">Formatter</text>
+  <text x="605" y="194" text-anchor="middle" font-size="11" fill="#5b6472">aggregate result</text>
+
+  <!-- External: GitHub -->
+  <rect x="720" y="60" width="120" height="60" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="780" y="86" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">GitHub API</text>
+  <text x="780" y="104" text-anchor="middle" font-size="11" fill="#5b6472">api.github.com</text>
+
+  <!-- External: Gemini -->
+  <rect x="720" y="240" width="120" height="60" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="780" y="266" text-anchor="middle" font-size="13" font-weight="600" fill="#1a2233">Gemini API</text>
+  <text x="780" y="284" text-anchor="middle" font-size="11" fill="#5b6472">google-genai</text>
+
+  <!-- Arrows -->
+  <line x1="140" y1="160" x2="205" y2="160" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="172" y="150" text-anchor="middle" font-size="10" fill="#5b6472">HTTPS</text>
+
+  <line x1="340" y1="145" x2="388" y2="100" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="455" y1="120" x2="455" y2="146" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="455" y1="210" x2="455" y2="236" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="520" y1="255" x2="560" y2="212" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="550" y1="185" x2="344" y2="270" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="275" y1="190" x2="275" y2="246" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="262" y="222" text-anchor="end" font-size="10" fill="#5b6472">poll status</text>
+
+  <line x1="520" y1="90" x2="716" y2="90" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="618" y="80" text-anchor="middle" font-size="10" fill="#5b6472">REST (read-only)</text>
+  <line x1="520" y1="270" x2="716" y2="270" stroke="#5b6472" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="618" y="260" text-anchor="middle" font-size="10" fill="#5b6472">generateContent</text>
+</svg>
+<figcaption>Figure 1 — Component overview. The Formatter writes the final result into the Job Store, where the API layer serves it to polling clients.</figcaption>
+</figure>
+
+<h3>Processing model</h3>
+<ul>
+  <li><code>POST /api/v1/reviews</code> validates the URL, creates a job record, and enqueues the review as a FastAPI <strong>background task</strong> (v1) — no external queue needed.</li>
+  <li>The background task runs the pipeline: <em>fetch → build context → review → format</em>, updating job status at each stage.</li>
+  <li>Results are <strong>cached by PR head SHA</strong>: re-submitting the same PR at the same commit returns the finished review instantly.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="api"><span class="secnum">3.</span>API Design</h2>
+
+<table>
+  <tr><th style="width:110px">Method</th><th style="width:260px">Path</th><th>Purpose</th></tr>
+  <tr><td><span class="pill post">POST</span></td><td><code>/api/v1/reviews</code></td><td>Submit a PR URL for review. Returns <code>202 Accepted</code> with a job ID (or <code>200</code> with the cached result).</td></tr>
+  <tr><td><span class="pill get">GET</span></td><td><code>/api/v1/reviews/{review_id}</code></td><td>Poll job status; returns the full review when complete.</td></tr>
+  <tr><td><span class="pill get">GET</span></td><td><code>/healthz</code></td><td>Liveness probe; also reports GitHub/Gemini reachability.</td></tr>
+</table>
+
+<h3>3.1 Submit a review</h3>
+<pre><code><span class="c">// POST /api/v1/reviews</span>
+{
+  <span class="k">"pr_url"</span>: <span class="s">"https://github.com/org/repo/pull/1234"</span>,
+  <span class="k">"focus"</span>: [<span class="s">"bugs"</span>, <span class="s">"security"</span>]        <span class="c">// optional; default: all categories</span>
+}
+
+<span class="c">// 202 Accepted</span>
+{
+  <span class="k">"review_id"</span>: <span class="s">"rev_8f3ka92c"</span>,
+  <span class="k">"status"</span>: <span class="s">"queued"</span>,
+  <span class="k">"pr"</span>: { <span class="k">"owner"</span>: <span class="s">"org"</span>, <span class="k">"repo"</span>: <span class="s">"repo"</span>, <span class="k">"number"</span>: <span class="n">1234</span> },
+  <span class="k">"poll_url"</span>: <span class="s">"/api/v1/reviews/rev_8f3ka92c"</span>
+}</code></pre>
+
+<h3>3.2 Poll for the result</h3>
+<pre><code><span class="c">// GET /api/v1/reviews/rev_8f3ka92c  →  200 OK (completed)</span>
+{
+  <span class="k">"review_id"</span>: <span class="s">"rev_8f3ka92c"</span>,
+  <span class="k">"status"</span>: <span class="s">"completed"</span>,          <span class="c">// queued | fetching | reviewing | completed | failed</span>
+  <span class="k">"pr"</span>: {
+    <span class="k">"owner"</span>: <span class="s">"org"</span>, <span class="k">"repo"</span>: <span class="s">"repo"</span>, <span class="k">"number"</span>: <span class="n">1234</span>,
+    <span class="k">"title"</span>: <span class="s">"Add retry logic to payment webhook"</span>,
+    <span class="k">"head_sha"</span>: <span class="s">"a1b2c3d"</span>, <span class="k">"files_changed"</span>: <span class="n">7</span>, <span class="k">"additions"</span>: <span class="n">214</span>, <span class="k">"deletions"</span>: <span class="n">38</span>
+  },
+  <span class="k">"result"</span>: {
+    <span class="k">"verdict"</span>: <span class="s">"request_changes"</span>,   <span class="c">// approve | approve_with_nits | request_changes</span>
+    <span class="k">"summary"</span>: <span class="s">"Solid retry design, but the webhook handler can double-charge on timeout…"</span>,
+    <span class="k">"findings"</span>: [
+      {
+        <span class="k">"file"</span>: <span class="s">"app/webhooks/payment.py"</span>,
+        <span class="k">"line"</span>: <span class="n">88</span>,
+        <span class="k">"severity"</span>: <span class="s">"blocker"</span>,
+        <span class="k">"category"</span>: <span class="s">"bug"</span>,
+        <span class="k">"comment"</span>: <span class="s">"Retry fires before the idempotency key is persisted, so a timeout can charge twice."</span>,
+        <span class="k">"suggested_fix"</span>: <span class="s">"Persist the idempotency key before calling the gateway; retry only on read of an unpersisted key."</span>
+      }
+    ],
+    <span class="k">"stats"</span>: { <span class="k">"files_reviewed"</span>: <span class="n">7</span>, <span class="k">"files_skipped"</span>: <span class="n">0</span>, <span class="k">"model_calls"</span>: <span class="n">4</span>, <span class="k">"duration_ms"</span>: <span class="n">41250</span> }
+  }
+}</code></pre>
+
+<h3>3.3 Error model</h3>
+<p>All errors use a single envelope: <code>{ "error": { "code", "message", "details?" } }</code>.</p>
+<table>
+  <tr><th style="width:90px">HTTP</th><th style="width:220px">Code</th><th>When</th></tr>
+  <tr><td>400</td><td><code>invalid_pr_url</code></td><td>URL is not of the form <code>github.com/{owner}/{repo}/pull/{n}</code>.</td></tr>
+  <tr><td>404</td><td><code>pr_not_found</code></td><td>PR doesn't exist, or the repo is private (indistinguishable via unauthenticated API — message says so).</td></tr>
+  <tr><td>404</td><td><code>review_not_found</code></td><td>Unknown or expired <code>review_id</code>.</td></tr>
+  <tr><td>413</td><td><code>diff_too_large</code></td><td>PR exceeds the configured cap (default: 60 files or 20k changed lines). Partial review is offered via <code>details.reviewable_files</code>.</td></tr>
+  <tr><td>429</td><td><code>rate_limited</code></td><td>Service-level throttle, or GitHub/Gemini quota exhausted; <code>Retry-After</code> header set.</td></tr>
+  <tr><td>502</td><td><code>upstream_error</code></td><td>GitHub or Gemini failed after retries. Job status becomes <code>failed</code> with the same code.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="components"><span class="secnum">4.</span>Component Design</h2>
+
+<h3>4.1 PR Fetcher</h3>
+<p>Parses and validates the PR URL, then reads everything needed through the GitHub REST API (read-only, no clone):</p>
+<table>
+  <tr><th style="width:380px">Endpoint</th><th>Provides</th></tr>
+  <tr><td><code>GET /repos/{o}/{r}/pulls/{n}</code></td><td>Title, description, base/head SHAs, change stats, state.</td></tr>
+  <tr><td><code>GET /repos/{o}/{r}/pulls/{n}/files</code> (paginated)</td><td>Per-file status (added/modified/removed/renamed) and unified <code>patch</code> hunks.</td></tr>
+  <tr><td><code>GET /repos/{o}/{r}/contents/{path}?ref={head_sha}</code></td><td>Full file content at the PR head, for context.</td></tr>
+</table>
+<div class="callout warn">
+<strong>Rate limits:</strong> unauthenticated GitHub API calls are capped at <strong>60 requests/hour per IP</strong> — enough for roughly 2–4 reviews. The service accepts an optional <code>GITHUB_TOKEN</code> (any classic PAT with public-repo scope) raising this to <strong>5,000/hour</strong>. This is strongly recommended for any real deployment and is the default assumption in capacity planning below.
+</div>
+<ul>
+  <li><strong>Skip rules:</strong> binary files, generated files (lockfiles, <code>*.min.js</code>, <code>dist/</code>), and files over 4,000 lines are excluded from model input but listed as <code>files_skipped</code> in the result.</li>
+  <li><strong>Retries:</strong> exponential backoff (3 attempts) on 5xx and secondary-rate-limit responses; hard fail on 403 quota exhaustion with <code>rate_limited</code>.</li>
+</ul>
+
+<h3>4.2 Context Builder</h3>
+<p>Assembles model input per file: the diff hunks <em>plus</em> the full file at head SHA, so the model sees the code around each change. Works to an explicit token budget:</p>
+<ul>
+  <li><strong>Budget:</strong> ~150k input tokens per model call (well under Gemini's 1M window, keeping latency and cost predictable).</li>
+  <li><strong>Batching:</strong> files are greedily packed into batches under the budget; small PRs review in a single call, large ones in several parallel calls.</li>
+  <li><strong>Truncation:</strong> when a full file would blow the budget, it degrades to diff hunks ± 60 lines of surrounding context, and the finding notes reduced context.</li>
+  <li><strong>PR metadata</strong> (title, description, file list) is included in every batch so each call understands the intent of the whole change.</li>
+</ul>
+
+<h3>4.3 Review Engine (Gemini)</h3>
+<div class="cols">
+  <div class="card">
+    <h4>Per-batch review pass — <code>gemini-2.5-pro</code></h4>
+    <p>One call per file batch. The prompt gives the model a senior-reviewer persona, the PR intent, the batched files (diff + context), review categories, and severity definitions. Output is <strong>constrained JSON</strong> via Gemini's <code>response_schema</code> — a list of findings matching the schema in §5. No free-text parsing.</p>
+  </div>
+  <div class="card">
+    <h4>Synthesis pass — <code>gemini-2.5-flash</code></h4>
+    <p>One cheap call that receives all findings + PR metadata and produces the overall <code>verdict</code> and 3–6 sentence <code>summary</code>, deduplicating findings that multiple batches reported. Flash is sufficient because this pass reasons over findings, not code.</p>
+  </div>
+</div>
+<ul>
+  <li><strong>Prompt rules baked in:</strong> comment only on changed code (context is for understanding, not for drive-by refactors); every finding must cite file + line from the diff; prefer concrete suggested fixes; do not invent line numbers.</li>
+  <li><strong>Determinism:</strong> <code>temperature=0.2</code>; findings failing schema validation trigger one re-ask, then are dropped with a logged warning.</li>
+  <li><strong>Categories:</strong> <code>bug</code>, <code>security</code>, <code>performance</code>, <code>error_handling</code>, <code>maintainability</code>, <code>testing</code>, <code>style</code>.</li>
+</ul>
+
+<h3>4.4 Response Formatter</h3>
+<ul>
+  <li>Merges batch findings, sorts by severity then file path, and maps diff-relative positions to head-file line numbers.</li>
+  <li>Derives the verdict deterministically as a floor: any <span class="pill sev-blocker">blocker</span> ⇒ <code>request_changes</code>; only <span class="pill sev-minor">minor</span>/<span class="pill sev-info">info</span> ⇒ <code>approve_with_nits</code>; the synthesis pass may downgrade but never upgrade this.</li>
+  <li>Writes the completed result (or failure) into the Job Store and stamps <code>duration_ms</code> and call counts.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="data-model"><span class="secnum">5.</span>Data Model</h2>
+
+<h3>5.1 ReviewJob</h3>
+<pre><code>ReviewJob {
+  review_id:   <span class="s">string</span>       <span class="c">// "rev_" + 8-char random id</span>
+  status:      <span class="s">enum</span>         <span class="c">// queued | fetching | reviewing | completed | failed</span>
+  pr:          PRRef        <span class="c">// owner, repo, number, title, head_sha, stats</span>
+  focus:       <span class="s">string[]</span>     <span class="c">// requested categories, empty = all</span>
+  result:      ReviewResult | <span class="n">null</span>
+  error:       ErrorInfo | <span class="n">null</span>
+  created_at / started_at / finished_at: <span class="s">timestamp</span>
+}</code></pre>
+
+<h3>5.2 Finding</h3>
+<pre><code>Finding {
+  file:           <span class="s">string</span>    <span class="c">// path at head SHA</span>
+  line:           <span class="s">int | null</span> <span class="c">// head-file line; null for file-level findings</span>
+  severity:       <span class="s">enum</span>      <span class="c">// blocker | major | minor | info</span>
+  category:       <span class="s">enum</span>      <span class="c">// bug | security | performance | error_handling | maintainability | testing | style</span>
+  comment:        <span class="s">string</span>
+  suggested_fix:  <span class="s">string | null</span>
+}</code></pre>
+
+<h3>5.3 Severity levels</h3>
+<table>
+  <tr><th style="width:140px">Severity</th><th>Meaning</th><th style="width:220px">Effect on verdict</th></tr>
+  <tr><td><span class="pill sev-blocker">blocker</span></td><td>Correctness, security, or data-loss issue that must be fixed before merge.</td><td>Forces <code>request_changes</code></td></tr>
+  <tr><td><span class="pill sev-major">major</span></td><td>Likely defect or significant design concern; should be addressed.</td><td>Usually <code>request_changes</code></td></tr>
+  <tr><td><span class="pill sev-minor">minor</span></td><td>Real but low-risk issue; fix now or soon.</td><td><code>approve_with_nits</code></td></tr>
+  <tr><td><span class="pill sev-info">info</span></td><td>Observation, question, or optional improvement.</td><td>No effect</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="sequence"><span class="secnum">6.</span>Request Lifecycle</h2>
+
+<figure>
+<svg viewBox="0 0 860 470" width="100%" role="img" aria-label="Sequence diagram">
+  <defs>
+    <marker id="sarr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#334155"/>
+    </marker>
+  </defs>
+  <!-- Lifelines -->
+  <g font-size="13" font-weight="600" fill="#1a2233" text-anchor="middle">
+    <rect x="30" y="16" width="110" height="34" rx="6" fill="#f1f5f9" stroke="#94a3b8"/><text x="85" y="38">Client</text>
+    <rect x="220" y="16" width="110" height="34" rx="6" fill="#dbeafe" stroke="#2563eb"/><text x="275" y="38">API Layer</text>
+    <rect x="410" y="16" width="130" height="34" rx="6" fill="#dcfce7" stroke="#15803d"/><text x="475" y="38">Pipeline Task</text>
+    <rect x="600" y="16" width="100" height="34" rx="6" fill="#f1f5f9" stroke="#94a3b8"/><text x="650" y="38">GitHub</text>
+    <rect x="740" y="16" width="100" height="34" rx="6" fill="#f1f5f9" stroke="#94a3b8"/><text x="790" y="38">Gemini</text>
+  </g>
+  <g stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4 4">
+    <line x1="85" y1="50" x2="85" y2="450"/>
+    <line x1="275" y1="50" x2="275" y2="450"/>
+    <line x1="475" y1="50" x2="475" y2="450"/>
+    <line x1="650" y1="50" x2="650" y2="450"/>
+    <line x1="790" y1="50" x2="790" y2="450"/>
+  </g>
+  <g font-size="11.5" fill="#334155">
+    <line x1="85" y1="80" x2="271" y2="80" stroke="#334155" stroke-width="1.4" marker-end="url(#sarr)"/>
+    <text x="178" y="72" text-anchor="middle">POST /reviews { pr_url }</text>
+
+    <line x1="275" y1="110" x2="85" y2="110" stroke="#334155" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#sarr)"/>
+    <text x="178" y="102" text-anchor="middle">202 { review_id, status: queued }</text>
+
+    <line x1="275" y1="140" x2="471" y2="140" stroke="#334155" stroke-width="1.4" marker-end="url(#sarr)"/>
+    <text x="373" y="132" text-anchor="middle">enqueue background task</text>
+
+    <line x1="475" y1="175" x2="646" y2="175" stroke="#334155" stroke-width="1.4" marker-end="url(#sarr)"/>
+    <text x="560" y="167" text-anchor="middle">GET pull, files, contents@head</text>
+    <line x1="650" y1="200" x2="479" y2="200" stroke="#334155" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#sarr)"/>
+    <text x="560" y="192" text-anchor="middle">metadata + patches + files</text>
+    <text x="475" y="222" text-anchor="middle" fill="#5b6472" font-style="italic">status → fetching → reviewing</text>
+
+    <line x1="475" y1="250" x2="786" y2="250" stroke="#334155" stroke-width="1.4" marker-end="url(#sarr)"/>
+    <text x="630" y="242" text-anchor="middle">review pass per batch (2.5-pro, JSON schema)</text>
+    <line x1="790" y1="275" x2="479" y2="275" stroke="#334155" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#sarr)"/>
+    <text x="630" y="267" text-anchor="middle">findings[]</text>
+
+    <line x1="475" y1="305" x2="786" y2="305" stroke="#334155" stroke-width="1.4" marker-end="url(#sarr)"/>
+    <text x="630" y="297" text-anchor="middle">synthesis pass (2.5-flash)</text>
+    <line x1="790" y1="330" x2="479" y2="330" stroke="#334155" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#sarr)"/>
+    <text x="630" y="322" text-anchor="middle">verdict + summary</text>
+
+    <text x="475" y="357" text-anchor="middle" fill="#5b6472" font-style="italic">format, store result, status → completed</text>
+
+    <line x1="85" y1="390" x2="271" y2="390" stroke="#334155" stroke-width="1.4" marker-end="url(#sarr)"/>
+    <text x="178" y="382" text-anchor="middle">GET /reviews/{id}  (poll)</text>
+    <line x1="275" y1="420" x2="85" y2="420" stroke="#334155" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#sarr)"/>
+    <text x="178" y="412" text-anchor="middle">200 { status: completed, result }</text>
+  </g>
+</svg>
+<figcaption>Figure 2 — Review lifecycle. Clients poll every ~3s; typical end-to-end time is 20–90s depending on PR size.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="nfr"><span class="secnum">7.</span>Non-Functional Concerns</h2>
+
+<h3>7.1 Rate limiting &amp; quotas</h3>
+<ul>
+  <li><strong>Inbound:</strong> per-IP throttle (e.g. 10 submissions/hour) plus a global concurrency cap (default 3 concurrent reviews) to protect upstream quotas.</li>
+  <li><strong>GitHub:</strong> with a token, 5,000 req/hr. A 30-file PR costs ~35 requests (1 PR + 2 pages of files + 30 contents), so the ceiling is ~140 mid-size reviews/hour — inbound throttling keeps us far below it.</li>
+  <li><strong>Gemini:</strong> respect RPM/TPM limits of the key's tier; the concurrency cap plus batch sizing keeps a review to typically 2–5 model calls.</li>
+</ul>
+
+<h3>7.2 Caching</h3>
+<ul>
+  <li>Completed reviews cached by <code>(owner, repo, number, head_sha)</code> for 24h — re-submitting an unchanged PR is free and instant.</li>
+  <li>A new push changes the head SHA and naturally invalidates the cache.</li>
+</ul>
+
+<h3>7.3 Reliability</h3>
+<ul>
+  <li>Timeouts: 30s per GitHub call, 120s per Gemini call; the whole pipeline is capped at 10 minutes before the job fails.</li>
+  <li>Retries with exponential backoff on transient upstream errors; jobs fail closed with a structured <code>error</code>, never hang in <code>reviewing</code>.</li>
+  <li>v1 job store is in-memory: results are lost on restart (acceptable — reviews are cheap to re-run and cached by SHA). Redis is the drop-in upgrade when persistence matters.</li>
+</ul>
+
+<h3>7.4 Security &amp; secrets</h3>
+<ul>
+  <li><code>GEMINI_API_KEY</code> and optional <code>GITHUB_TOKEN</code> come from environment variables (or the platform's secret manager); never logged, never echoed in responses.</li>
+  <li>Only <code>github.com</code> PR URLs are accepted (strict parse, no redirects followed) — prevents SSRF via attacker-supplied URLs.</li>
+  <li>Reviewed code is untrusted input to the model: prompts instruct the model to treat file content purely as data, and outputs are schema-validated, which bounds prompt-injection blast radius (worst case: bad review text, no tool access to escalate).</li>
+  <li>If the API is exposed publicly, put a simple API key check (<code>X-API-Key</code>) in front of <code>POST /reviews</code>.</li>
+</ul>
+
+<h3>7.5 Cost estimate</h3>
+<table>
+  <tr><th>PR size</th><th>Model calls</th><th>Approx. tokens</th><th>Approx. cost / review</th></tr>
+  <tr><td>Small (≤5 files)</td><td>1 pro + 1 flash</td><td>~30k in / 3k out</td><td>~$0.05</td></tr>
+  <tr><td>Medium (6–20 files)</td><td>2–3 pro + 1 flash</td><td>~150k in / 8k out</td><td>~$0.25</td></tr>
+  <tr><td>Large (21–60 files)</td><td>4–6 pro + 1 flash</td><td>~450k in / 15k out</td><td>~$0.70</td></tr>
+</table>
+<p class="meta">Based on Gemini 2.5 Pro list pricing; treat as order-of-magnitude. <code>stats</code> in every result reports actual call counts for monitoring.</p>
+
+<!-- ============================================================ -->
+<h2 id="stack"><span class="secnum">8.</span>Tech Stack</h2>
+<table>
+  <tr><th style="width:220px">Concern</th><th>Choice</th><th>Why</th></tr>
+  <tr><td>Language / framework</td><td>Python 3.12 + <strong>FastAPI</strong></td><td>Async-native, pydantic validation matches the schema-first design, built-in background tasks cover v1 job execution.</td></tr>
+  <tr><td>GitHub client</td><td><code>httpx</code> (async)</td><td>Thin REST usage doesn't justify a heavy SDK; easy retry/timeout control.</td></tr>
+  <tr><td>LLM client</td><td><code>google-genai</code> SDK</td><td>Official SDK; first-class <code>response_schema</code> structured output.</td></tr>
+  <tr><td>Job store</td><td>In-memory dict (v1) → Redis</td><td>Single-process v1 keeps ops at zero; Redis unlocks multi-worker + persistence without API changes.</td></tr>
+  <tr><td>Packaging / deploy</td><td>Docker, single container</td><td>Runs anywhere (Cloud Run, Fly.io, a VM); config entirely via env vars.</td></tr>
+  <tr><td>Testing</td><td><code>pytest</code> + recorded GitHub fixtures + faked Gemini responses</td><td>Pipeline is testable offline; golden-file tests on formatter output.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="future"><span class="secnum">9.</span>Future Work</h2>
+<ol>
+  <li><strong>GitHub App integration</strong> — post the review back as inline PR comments and a review summary; reuse the Formatter output, add a Commenter component.</li>
+  <li><strong>Webhook-triggered reviews</strong> — auto-review on <code>pull_request</code> events for installed repos.</li>
+  <li><strong>Private repositories</strong> — GitHub App installation tokens replace the public-only fetcher path.</li>
+  <li><strong>GitLab / Bitbucket</strong> — extract a <code>Provider</code> interface from the PR Fetcher (URL parse, metadata, files, contents).</li>
+  <li><strong>Deeper analysis</strong> — optional shallow clone for cross-file symbol tracing; run linters and include their output as model context.</li>
+  <li><strong>Incremental re-review</strong> — on a new push, review only files changed since the last reviewed SHA.</li>
+</ol>
+
+</div>
+</body>
+</html>
